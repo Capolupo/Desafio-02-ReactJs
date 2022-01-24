@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext, useState } from 'react';
+import { createContext, ReactNode, useContext, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { api } from '../services/api';
 import { Product, Stock } from '../types';
@@ -22,29 +22,88 @@ interface CartContextData {
 const CartContext = createContext<CartContextData>({} as CartContextData);
 
 export function CartProvider({ children }: CartProviderProps): JSX.Element {
+  //Andre cart é um estado, um array de produtos
   const [cart, setCart] = useState<Product[]>(() => {
-    // const storagedCart = Buscar dados do localStorage
+    const storagedCart = localStorage.getItem('@RocketShoes:cart');
 
-    // if (storagedCart) {
-    //   return JSON.parse(storagedCart);
-    // }
+    if (storagedCart) {
+      return JSON.parse(storagedCart);
+    }
 
     return [];
   });
 
+  const prevCartRef = useRef<Product[]>();
+  //****Logica para rodar sempre q o cart for atualizado */
+  useEffect(() =>{
+    prevCartRef.current = cart;
+  })
+
+  const cartPreviousValue  = prevCartRef.current ?? cart;
+
+  useEffect (() =>{
+    if (cartPreviousValue !== cart) {
+      localStorage.setItem('@RocketShoes:cart', JSON.stringify(cart));
+    }
+  },[cart, cartPreviousValue]);
+  //****Logica para rodar sempre q o cart for atualizado */
+  
   const addProduct = async (productId: number) => {
     try {
-      // TODO
-    } catch {
-      // TODO
+      // TODO - todo o código e lógica de adição e perpetuação no carrinho
+      // Aqui estou usanda a imutabilidade assim estou criando uma nova variavel do tipo cart
+      //com todo o conteudo dela, se fosse assim const updatedCart = cart; minha variavel seria igual a cart
+      // e estaria alterando o conteudo dela
+      const updatedCart = [...cart];
+      
+      //Variavel para consefir se o produto que esta vindo ja existe no carrinho
+      const productExists = updatedCart.find(product => product.id === productId);
+
+      //Quantidade do produto selecionado
+      const stock = await api.get(`/stock/${productId}`);
+
+      const stockAmount = stock.data.amount;
+      const currentAmount = productExists ? productExists.amount : 0;
+      const amount = currentAmount + 1;
+
+      if (amount > stockAmount) {
+        toast.error('Quantidade solicitada fora de estoque');
+        return;
+      }
+
+      if (productExists) {
+        productExists.amount = amount;
+      } else{
+        const product = await api.get(`/products/${productId}`);
+        const newProduct = {
+          ...product.data,
+          amount: 1
+        }
+        updatedCart.push(newProduct);
+      }
+      // preciso dar este comando para perpetuar a inserção no carrinho  
+      setCart(updatedCart);
+    } catch {      
+      toast.error('Erro na adição do produto');
     }
   };
+
+
 
   const removeProduct = (productId: number) => {
     try {
       // TODO
+      const updatedCart = [...cart];
+      const productIndex = updatedCart.findIndex(product => product.id === productId);
+
+      if ( productIndex >= 0 ){
+        updatedCart.splice(productIndex, 1);
+        setCart(updatedCart);        
+      } else{
+        throw Error();
+      }
     } catch {
-      // TODO
+      toast.error('Erro na remoção do produto');
     }
   };
 
@@ -53,9 +112,30 @@ export function CartProvider({ children }: CartProviderProps): JSX.Element {
     amount,
   }: UpdateProductAmount) => {
     try {
-      // TODO
+      // TODO se a qtde for menor = 0 cai fora
+      if (amount <= 0 ){
+        return;
+      }
+      
+      const stock = await api.get(`/stock/${productId}`);
+      const stockAmount = stock.data.amount;
+
+      if (amount > stockAmount) {
+        toast.error('Quantidade solicitada fora de estoque');
+        return;
+      }
+
+      const updatedCart = [...cart];
+      const productExists = updatedCart.find(product => product.id === productId)
+
+      if (productExists) {
+        productExists.amount = amount;
+        setCart(updatedCart);        
+      } else{
+        throw Error();
+      }
     } catch {
-      // TODO
+      toast.error('Erro na alteração de quantidade do produto');
     }
   };
 
